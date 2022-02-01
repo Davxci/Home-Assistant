@@ -1,5 +1,5 @@
 blueprint:
-  name: Chauffage final
+  name: Chauffage final 2
   description: Chauffage avec gestion des jours, des heures, ouverture de la fenêtre
     et d'un capteur de température
   domain: automation
