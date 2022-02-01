@@ -1,0 +1,184 @@
+blueprint:
+  name: Chauffage final
+  description: Chauffage avec gestion des jours, des heures, ouverture de la fenêtre
+    et d'un capteur de température
+  domain: automation
+  input:
+    heating:
+      name: Vanne thermostatique
+      description: Vanne thermostatique à utiliser.
+      selector:
+        entity:
+          domain: climate
+    temp_sensor:
+      name: Capteur de Temperature
+      description: Capteur de Temperature à verifier.
+      selector:
+        entity:
+          domain: sensor
+          device_class: temperature
+    ouvert_sensor:
+      name: Capteur d'ouverture de fenettre
+      description: Capteur ouverture à verifier.
+      selector:
+        entity:
+          domain: binary_sensor
+    min_temp:
+      name: Minimum Temp
+      description: Si la température est en dessous de la valeur et que la fenêtre
+        fermée alors ça chauffe (hors horaire nuit).
+      default: 18
+      selector:
+        number:
+          min: 15.0
+          max: 25.0
+          step: 1.0
+          mode: slider
+    set_temp:
+      name: Temperature cible
+      description: Température a atteindre
+      default: 21
+      selector:
+        number:
+          min: 15.0
+          max: 25.0
+          step: 1.0
+          mode: slider
+    time_after:
+      name: Heure de début
+      description: Heure de début de chauffe
+      default: 05:40:00
+      selector:
+        time: {}
+    time_before:
+      name: Heure de fin
+      description: Heure de fin de chauffe
+      default: '22:30:00'
+      selector:
+        time: {}
+    on_lundi:
+      name: Lundi
+      selector:
+        boolean: {}
+      default: false
+    on_mardi:
+      name: Mardi
+      selector:
+        boolean: {}
+      default: false
+    on_mercredi:
+      name: Mercredi
+      selector:
+        boolean: {}
+      default: false
+    on_jeudi:
+      name: Jeudi
+      selector:
+        boolean: {}
+      default: false
+    on_vendredi:
+      name: Vendredi
+      selector:
+        boolean: {}
+      default: false
+    on_samedi:
+      name: Samedi
+      selector:
+        boolean: {}
+      default: false
+    on_dimanche:
+      name: Dimanche
+      selector:
+        boolean: {}
+      default: false
+  source_url: https://gist.github.com/Davxci/ed2d53b4ad2a568d75df0838f9bc186a
+variables:
+  set_temp: !input 'set_temp'
+  var_on_lundi: !input 'on_lundi'
+  var_on_mardi: !input 'on_mardi'
+  var_on_mercredi: !input 'on_mercredi'
+  var_on_jeudi: !input 'on_jeudi'
+  var_on_vendredi: !input 'on_vendredi'
+  var_on_samedi: !input 'on_samedi'
+  var_on_dimanche: !input 'on_dimanche'
+trigger:
+- platform: homeassistant
+  event: start
+- platform: event
+  event_type: automation_reloaded
+- platform: state
+  entity_id: !input 'ouvert_sensor'
+  attribute: contact
+  to: true
+- platform: state
+  entity_id: !input 'ouvert_sensor'
+  attribute: contact
+  to: false
+- platform: time_pattern
+  minutes: /10
+
+action:
+  - choose:
+      - conditions:
+        - condition: numeric_state #si temperature inferieur
+          entity_id: !input 'temp_sensor'
+          below: !input 'min_temp' 
+        - condition: time # si dans la plage horaire
+          before: !input 'time_before'
+          after: !input 'time_after'
+        - condition: state # si capteur ouverture ferme
+          entity_id: !input 'ouvert_sensor'
+          attribute: contact
+          state: true
+        - condition: or # si jour 
+          conditions:
+          - '{{ ((now().strftime(''%A'') == ''Tuesday'') and (var_on_mardi == true)) }}'
+          - '{{ ((now().strftime(''%A'') == ''Wednesday'') and (var_on_mercredi == true)) }}'
+          - '{{ ((now().strftime(''%A'') == ''Thursday'') and (var_on_jeudi == true)) }}'
+          - '{{ ((now().strftime(''%A'') == ''Friday'') and (var_on_vendredi == true)) }}'
+          - '{{ ((now().strftime(''%A'') == ''Saturday'') and (var_on_samedi == true)) }}'
+          - '{{ ((now().strftime(''%A'') == ''Sunday'') and (var_on_dimanche == true)) }}'
+          - '{{ ((now().strftime(''%A'') == ''Monday'') and (var_on_lundi == true)) }}'
+        sequence:
+        - service: climate.set_temperature
+          data:
+            entity_id: !input 'heating'
+            hvac_mode: heat
+            temperature: '{{ set_temp }}'
+      - conditions:
+        - condition: or
+          conditions:
+          - '{{ ((now().strftime(''%A'') == ''Tuesday'') and (var_on_mardi == false)) }}'
+          - '{{ ((now().strftime(''%A'') == ''Wednesday'') and (var_on_mercredi == false)) }}'
+          - '{{ ((now().strftime(''%A'') == ''Thursday'') and (var_on_jeudi == false)) }}'
+          - '{{ ((now().strftime(''%A'') == ''Friday'') and (var_on_vendredi == false)) }}'
+          - '{{ ((now().strftime(''%A'') == ''Saturday'') and (var_on_samedi == false)) }}'
+          - '{{ ((now().strftime(''%A'') == ''Sunday'') and (var_on_dimanche == false)) }}'
+          - '{{ ((now().strftime(''%A'') == ''Monday'') and (var_on_lundi == false)) }}'
+          - condition: time
+            before: !input 'time_after'
+          - condition: time
+            after: !input 'time_before'
+          - condition: state # si capteur ouverture ferme
+            entity_id: !input 'ouvert_sensor'
+            attribute: contact
+            state: false
+          - condition: numeric_state #si temperature inferieur
+            entity_id: !input 'temp_sensor'
+            below: !input 'set_temp' 
+        sequence:
+      - conditions:
+        - condition: or
+          conditions:
+          - condition: state # si capteur ouverture ferme
+            entity_id: !input 'ouvert_sensor'
+            attribute: contact
+            state: false
+        sequence:
+          - service: climate.turn_off
+            data:
+              entity_id: !input 'heating'
+    default:
+      - service: climate.turn_off
+        data:
+          entity_id: !input 'heating'
